@@ -1,0 +1,200 @@
+---
+title: "hchs_data_preparation"
+output: html_document
+date: "2024-01-03"
+authors: A. Klimesch, L. Ascone 
+dataset: initial 10,000 cases of HCHS "HCHS_Data_SPSS_labelled_sozio"
+purpose: this code prepares the variables in the HCHS dataset for calculating the SES-Index
+---
+
+packages
+```{r, results = FALSE, message=FALSE}
+library(foreign) # for read.spss
+library(dplyr) 
+library(stringr) # for str_trim
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load dataset and duplicate
+```{r}
+hchs_ses <- read.spss("C:[enter_your_pathway]/HCHS_Data_SPSS_labelled.sav", to.data.frame = TRUE, use.value.labels = FALSE, reencode = 'utf-8')
+```
+
+School Education
+variable: am_schube_ausb_001
+```{r}
+table(hchs_ses$am_schube_ausb_001, useNA = "always") # frequency table of original variable 
+```
+The variable has 4 missing or unclassified values: NA, "10" (other/ non-specified), "8888" (don't want to respond), "9999" (don't know), "-99". Category 10 has to be classified based on the information in variable am_schube_ausb_002, the others are classified as NAs. 
+
+Important: Before going on with the code, manually assign an adequate value to the cases of the variable am_schube_ausb_001 with current value "10" (other/ non-specified) using the information provided in variable am_schube_ausb_002.
+
+Unify missing values of the variable am_schube_ausb_001 and declare "-999" as NAs 
+```{r}
+hchs_ses$am_schube_ausb_001 <- str_trim(hchs_ses$am_schube_ausb_001) # remove spaces behind values 
+
+hchs_ses <- hchs_ses %>%
+  mutate(school_edu = ifelse(am_schube_ausb_001 %in% c('8888', '9999', 'NA', '-99'), NA_character_, am_schube_ausb_001))
+
+table(hchs_ses$school_edu, useNA = "always") # frequency table of new variable for comparison with original frequency output 
+```
+
+Professional Education
+variable: am_schube_ausb_003
+```{r}
+table(hchs_ses$am_schube_ausb_003, useNA = "always")
+```
+
+The variable has 4 missing or unclassified values: NA, "12" (other educational degree), "8888" (don't want to respond), "9999" (don't know), "-99". Category 12 has to be classified based on the information in variable am_schube_ausb_004, the others are classified as NAs.
+
+Important: Before going on with the code, manually assign an adequate value to the cases of the variable am_schube_ausb_003 with current value "12" (other educational degree) using the information provided in variable am_schube_ausb_004. 
+
+For am_schube_ausb_003, multiple responses per participant were allowed. Therefore, select the highest value for each case and save it as a new variable.  
+```{r}
+hchs_ses$am_schube_ausb_003 <- str_trim(hchs_ses$am_schube_ausb_003) # remove spaces behind values 
+
+hchs_ses <- hchs_ses %>%
+  mutate(prof_edu = ifelse(am_schube_ausb_003 %in% c(8888, 9999, -99, -999, NA ), NA, 
+                           as.numeric(sub('.*\\|', '', as.character(am_schube_ausb_003)))))
+
+table(hchs_ses$prof_edu, useNA = "always")
+```
+
+Profession
+variable: am_schube_ausb_023   
+```{r}
+table(hchs_ses$am_schube_ausb_023, useNA = "always")
+```
+
+The variable has 4 categories of missing or unclassified values: NA, "8888" (don't want to respond), "9999" (don't know), "-99". Classify these values as NAs.
+```{r}
+hchs_ses <- hchs_ses %>%
+  mutate(profession = case_when(
+    am_schube_ausb_023 %in% c('8888', '9999', 'NA', '-99 ') ~ NA_real_, 
+    TRUE ~ as.numeric(am_schube_ausb_023)
+  ))
+
+table(hchs_ses$profession, useNA = "always")
+```
+
+Income
+variables: am_schube_ausb_037 (individual income), am_schube_ausb_038 (household income)
+```{r}
+table(hchs_ses$am_schube_ausb_037, useNA = "always")
+table(hchs_ses$am_schube_ausb_038, useNA = "always")
+```
+
+Variable am_schube_ausb_037 has 4 categories of missing or unclassified values: NA, "8888" (don't want to respond), "9999" (don't know), "66". Classify these values as NAs.
+Variable am_schube_ausb_038 has 3 categories of missing or unclassified values: NA, "8888" (don't want to respond), "9999" (don't know). Classify these values as NAs.
+```{r}
+recode_column <- function(column) {
+  case_when(
+    column %in% 1:17 ~ as.numeric(column),
+    column %in% c(8888, 9999, 66, -99, NA) ~ NA_real_,
+    TRUE ~ NA_real_
+  )
+}
+
+hchs_ses <- hchs_ses %>%
+  mutate(
+    ind_income = recode_column(am_schube_ausb_037),
+    house_income = recode_column(am_schube_ausb_038)
+  )
+```
+
+Create two variables with the mean income per category. 
+```{r}
+class_means <- c(
+  `1` = 410,
+  `2` = 625,
+  `3` = 875,
+  `4` = 1125,
+  `5` = 1375,
+  `6` = 1625,
+  `7` = 1875,
+  `8` = 2125,
+  `9` = 2375,
+  `10` = 2750,
+  `11` = 3250,
+  `12` = 3750,
+  `13` = 4250,
+  `14` = 4750,
+  `15` = 5500,
+  `16` = 7000,
+  `17` = 9000
+)
+
+hchs_ses <- hchs_ses %>%
+  mutate(
+    ind_income_classmean = case_when(
+      ind_income %in% names(class_means) ~ class_means[ind_income],
+      is.na(ind_income) ~ NA_real_,
+      TRUE ~ NA_real_
+    ),
+    house_income_classmean = case_when(
+      house_income %in% names(class_means) ~ class_means[house_income],
+      is.na(house_income) ~ NA_real_,
+      TRUE ~ NA_real_
+    )
+  )
+
+table(hchs_ses$ind_income, useNA = "always")
+table(hchs_ses$house_income, useNA = "always")
+table(hchs_ses$ind_income_classmean, useNA = "always")
+table(hchs_ses$house_income_classmean, useNA = "always")
+```
+
+Household size
+variables: sozio_fami_007 (no. of individuals at least 14 years of age in the household including oneself), sozio_fami_006 (no. of individuals in household including oneself)
+```{r}
+table(hchs_ses$sozio_fami_007, useNA = "always")
+table(hchs_ses$sozio_fami_006, useNA = "always")
+```
+
+Variable sozio_fami_007 and sozio_fami_006 both have 6 categories that need to be reclassified: NA, "8888" (don't want to respond), "9999" (don't know), "-99", "NP", and "null". Classify the first 5 values as NAs and change "null" into "1" (because participants were supposed to include themselves, thus the value cannot be 0).
+```{r}
+hchs_ses <- hchs_ses %>%
+  mutate(
+    no_adults = case_when(
+      sozio_fami_007 %in% as.character(1:18) ~ as.numeric(sozio_fami_007),
+      sozio_fami_007 %in% c('null') ~ 1,
+      sozio_fami_007 %in% c('-99 ', '8888', '9999', 'NA', 'NP') ~ NA_real_,
+      TRUE ~ as.numeric(sozio_fami_007)
+    ),
+    no_household = case_when(
+      sozio_fami_006 %in% as.character(1:16) ~ as.numeric(sozio_fami_006),
+      sozio_fami_006 %in% c('null') ~ 1,
+      sozio_fami_006 %in% c('-99 ', '8888', '9999', 'NA', 'NP') ~ NA_real_,
+      TRUE ~ as.numeric(sozio_fami_006)
+    )
+  )
+
+table(hchs_ses$no_adults, useNA = "always")
+table(hchs_ses$no_household, useNA = "always")
+```
+
+Number of children in household 
+Based on the above information, determine the hypothetical number of children in each household. 
+```{r}
+hchs_ses <- hchs_ses %>%
+  mutate(
+    no_children = no_household - no_adults
+  )
+table(hchs_ses$no_children, useNA = "always") # check if there are any negative values
+
+hchs_ses <- hchs_ses %>% # change negative values to NAs 
+  mutate(
+    no_children = ifelse(no_children < 0, NA_real_, no_children)
+  )
+table(hchs_ses$no_children, useNA = "always") 
+```
+
+Save preimp_excl_outlier dataframe
+```{r, include = FALSE}
+write.csv(hchs_ses, file = "hchs_ses_preprocessed.csv", row.names = FALSE)
+```
+
