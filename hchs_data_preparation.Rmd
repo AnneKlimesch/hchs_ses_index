@@ -31,7 +31,7 @@ table(hchs_ses$am_schube_ausb_001, useNA = "always") # frequency table of origin
 ```
 The variable has 4 missing or unclassified values: NA, "10" (other/ non-specified), "8888" (don't want to respond), "9999" (don't know), "-99". Category 10 has to be classified based on the information in variable am_schube_ausb_002, the others are classified as NAs. 
 
-Important: Before going on with the code, manually assign an adequate value to the cases of the variable am_schube_ausb_001 with current value "10" (other/ non-specified) using the information provided in variable am_schube_ausb_002.
+Important: Before going on with the code, manually assign an adequate value to the cases of the variable am_schube_ausb_001 with current value "10" (other/ non-specified) using the information provided in variable am_schube_ausb_002. For reasons of reliability, a data set which includes this manual classification can be retrieved from the HCHS study center.
 
 Unify missing values of the variable am_schube_ausb_001 and declare "-999" as NAs 
 ```{r}
@@ -51,7 +51,7 @@ table(hchs_ses$am_schube_ausb_003, useNA = "always")
 
 The variable has 4 missing or unclassified values: NA, "12" (other educational degree), "8888" (don't want to respond), "9999" (don't know), "-99". Category 12 has to be classified based on the information in variable am_schube_ausb_004, the others are classified as NAs.
 
-Important: Before going on with the code, manually assign an adequate value to the cases of the variable am_schube_ausb_003 with current value "12" (other educational degree) using the information provided in variable am_schube_ausb_004. 
+Important: Before going on with the code, manually assign an adequate value to the cases of the variable am_schube_ausb_003 with current value "12" (other educational degree) using the information provided in variable am_schube_ausb_004. For reasons of reliability, a data set which includes this manual classification can be retrieved from the HCHS study center.
 
 For am_schube_ausb_003, multiple responses per participant were allowed. Therefore, select the highest value for each case and save it as a new variable.  
 ```{r}
