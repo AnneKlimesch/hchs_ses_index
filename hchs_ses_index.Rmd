@@ -1,0 +1,151 @@
+---
+title: "hchs_ses_index"
+output: html_document
+date: "2024-01-03"
+authors: A. Klimesch, L. Ascone 
+dataset: initial 10,000 cases of HCHS "HCHS_Data_SPSS_labelled_sozio"
+purpose: this code calculates the SES-Index and its subscales for the initial 10,000 HCHS data
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load required packages
+```{r, results = FALSE, message=FALSE}
+library(foreign) 
+library(dplyr)
+library(haven)
+library(psych) # for psych:describe
+```
+
+Load dataset 
+```{r}
+hchs_ses <- read.csv("C:[enter_your_pathway]/hchs_ses_preprocessed.csv")
+```
+
+Education
+variables: school_edu, prof_edu
+Assign values to the SES-Index subscore education based on the combination of school education and professional education an individual has.
+```{r}
+hchs_ses <- hchs_ses %>% 
+  mutate(
+    education = case_when(
+      school_edu %in% 1:2 & prof_edu %in% 1:3 ~ 1,
+      school_edu %in% 2:3 & prof_edu %in% 4:7 ~ 3,
+      school_edu == 3 & prof_edu %in% 1:3 ~ 1.7,
+      school_edu %in% 4:6 & prof_edu %in% 1:3 ~ 2.8,
+      school_edu %in% 4:6 & prof_edu %in% 4:7 ~ 3.6,
+      school_edu %in% 7:9 & prof_edu %in% 1:3 ~ 3.7,
+      school_edu %in% 7:9 & prof_edu %in% 4:7 ~ 4.8,
+      school_edu %in% 7:9 & prof_edu %in% 8:9 ~ 6.1,
+      school_edu %in% 7:9 & prof_edu %in% c(10, 11) ~ 7
+    )
+  )
+
+table(hchs_ses$education, useNA = "always") # frequencies 
+total_n_education <- hchs_ses %>% # check if and how many cases exist with combinations of school_edu and prof_edu that have not been considered by the index classification
+  summarise(
+    cases_with_values_both = sum(!is.na(school_edu) & !is.na(prof_edu)),
+    sum_cases_with_education = sum(!is.na(education))
+  )
+total_n_education
+```
+
+Joblevel and position 
+Assign values to the SES-Index subscore job level based on the combination of the occupation and position an individual has.
+```{r}
+hchs_ses <- hchs_ses %>% 
+  mutate(
+    job = case_when(
+      profession == 1 & profession_1 == 1 ~ 1.1,
+      profession == 1 & profession_1 %in% 2:3 ~ 1.0,
+      profession == 2 & profession_2 == 1 ~ 6.2,
+      profession == 2 & profession_2 == 2 ~ 6.8,
+      profession == 2 & profession_2 == 3 ~ 7.0,
+      profession == 3 & profession_3 == 1 ~ 3.5,
+      profession == 3 & profession_3 == 2 ~ 3.6,
+      profession == 3 & profession_3 %in% 3:4 ~ 4.2,
+      profession == 4 & profession_4 == 1 ~ 2.9,
+      profession == 4 & profession_4 == 2 ~ 4.1,
+      profession == 4 & profession_4 == 3 ~ 5.2,
+      profession == 4 & profession_4 == 4 ~ 6.4,
+      profession == 5 & profession_5 == 1 ~ 2.4, 
+      profession == 5 & profession_5 == 2 ~ 3.6,
+      profession == 5 & profession_5 == 3 ~ 4.2,
+      profession == 5 & profession_5 == 4 ~ 4.7,
+      profession == 6 & profession_6 == 1 ~ 1.3,
+      profession == 6 & profession_6 %in% 2:3 ~ 2.1,
+      profession == 6 & profession_6 == 4 ~ 2.0,
+      profession == 6 & profession_6 == 5 ~ 2.4,
+      profession == 7 & profession_7 %in% 1:3 ~ 1.0,
+      profession == 8 ~ 2.4
+    )
+  )
+
+table(hchs_ses$education, useNA = "always") # frequencies 
+total_n_education <- hchs_ses %>% # check if and how many cases exist with combinations of school_edu and prof_edu that have not been considered by the index classification
+  summarise(
+    cases_with_values_both = sum(!is.na(school_edu) & !is.na(prof_edu)),
+    sum_cases_with_education = sum(!is.na(education))
+  )
+total_n_education
+```
+
+Income 
+variables: no_children, no_adults, house_income_classmean
+Determine net-equivalent household income: weight the household income by the number of adults (0.5) and children (0.3) living in the household 
+```{r}
+hchs_ses <- hchs_ses %>%
+  mutate(no_adults_except_subject = no_adults - 1, # substract by 1 because the subjects themselves should not be weighted
+         weight_adults = 1 + 0.5 * no_adults_except_subject,
+         weight_children = no_children * 0.3,
+         weight_netequ_household_inc = weight_adults + weight_children)
+
+table(hchs_ses$weight_netequ_household_inc, useNA = "always") # frequencies
+
+hchs_ses <- hchs_ses %>% 
+  mutate(
+    netequ_household_inc = case_when(
+      weight_netequ_household_inc == 0 ~ house_income_classmean,
+      weight_netequ_household_inc > 0 ~  house_income_classmean/weight_netequ_household_inc,
+      is.na(weight_netequ_household_inc) ~ NA_real_
+      )
+    )
+
+table(hchs_ses$netequ_household_inc, useNA = "always")
+```
+
+Create 13 categories of netequ_household_inc (based on percentile cut-offs of RKI DEGS study). Assign values to the SES-Index sub score job income based on the net-equivalent-income-quantile the individual belongs to.
+```{r}
+# Create a vector of percentiles
+percentiles <- c(7.6923076923076923076923076923077, 15.384615384615384615384615384615,
+                 23.076923076923076923076923076923, 30.769230769230769230769230769231,
+                 38.461538461538461538461538461539, 46.153846153846153846153846153846,
+                 53.846153846153846153846153846154, 61.538461538461538461538461538462,
+                 69.230769230769230769230769230769, 76.923076923076923076923076923077,
+                 84.615384615384615384615384615385, 92.307692307692307692307692307692)
+quantiles <- percentiles / 100
+
+quantile_results <- quantile(hchs_ses$netequ_household_inc, probs = quantiles, na.rm = TRUE) # create quantiles 
+
+breaks <- c(-Inf, quantile_results, Inf) # create breaks for cut function
+
+hchs_ses <- hchs_ses %>% # assign values to values depending on quantile 
+  mutate(
+    income = cut(netequ_household_inc, breaks = breaks, labels = c(1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0), include.lowest = TRUE)
+  )
+```
+
+SES-Index
+Determine the index based on the index sub scores 
+```{r}
+hchs_ses <- hchs_ses %>%
+  mutate(
+    education = as.numeric(as.character(education)),
+    job = as.numeric(as.character(job)),
+    income = as.numeric(as.character(income)),
+    ses_index = education + job + income
+  )
+```
+
