@@ -149,3 +149,7 @@ hchs_ses <- hchs_ses %>%
   )
 ```
 
+Save ses-index data frame
+```{r, include = FALSE}
+write.csv(hchs_ses, file = "hchs_ses_index.csv", row.names = FALSE)
+```
