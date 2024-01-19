@@ -62,6 +62,14 @@ hchs_ses <- hchs_ses %>%
 table(hchs_ses$school_edu, useNA = "always") # frequency table of new variable for comparison with original frequency output 
 ```
 
+Alternative to manually assigning values to the cases with "10" (other/ non-specified) of the variable am_schube_ausb_001: if number of these cases is <5%, then assign NA.
+#```{r}
+hchs_ses <- hchs_ses %>%
+  mutate(school_edu = ifelse(school_edu == 10, NA, school_edu))
+
+table(hchs_ses$school_edu, useNA = "always") # frequency table of new variable for comparison with original frequency output
+#```
+
 Professional Education
 variable: am_schube_ausb_003
 ```{r}
@@ -79,6 +87,14 @@ hchs_ses <- hchs_ses %>%
 
 table(hchs_ses$prof_edu, useNA = "always")
 ```
+
+Alternative to manually assigning values to the cases with "10" (other/ non-specified) of the variable am_schube_ausb_003: if number of these cases is <5%, then assign NA.
+#```{r}
+hchs_ses <- hchs_ses %>%
+  mutate(prof_edu = ifelse(prof_edu == 12, NA, prof_edu))
+
+table(hchs_ses$school_edu, useNA = "always") # frequency table of new variable for comparison with original frequency output
+#```
 
 Profession
 variables: am_schube_ausb_023 - am_schube_ausb_030
@@ -215,13 +231,13 @@ hchs_ses <- hchs_ses %>%
     no_adults = case_when(
       sozio_fami_007 %in% as.character(1:18) ~ as.numeric(sozio_fami_007),
       sozio_fami_007 %in% c('null') ~ 1,
-      sozio_fami_007 %in% c('-99 ', '8888', '9999', 'NA', 'NP') ~ NA_real_,
+      sozio_fami_007 %in% c('-99', '8888', '9999', 'NA', 'NP') ~ NA_real_,
       TRUE ~ as.numeric(sozio_fami_007)
     ),
     no_household = case_when(
       sozio_fami_006 %in% as.character(1:16) ~ as.numeric(sozio_fami_006),
       sozio_fami_006 %in% c('null') ~ 1,
-      sozio_fami_006 %in% c('-99 ', '8888', '9999', 'NA', 'NP') ~ NA_real_,
+      sozio_fami_006 %in% c('-99', '8888', '9999', 'NA', 'NP') ~ NA_real_,
       TRUE ~ as.numeric(sozio_fami_006)
     )
   )
