@@ -1,0 +1,287 @@
+---
+title: "HCHS SES Index Imputation n=17.000"
+output: html_document
+date: "2024-11-18"
+author: "Anne Klimesch"
+references: ChatGPT was used in the development or adaptation of this code. OpenAI ChatGPT (November 2024 version), https://chat.openai.com/; The following website was used for the imputation procedure https://rpubs.com/kaz_yos/mice-exclude
+note: |
+  This script prepares the dataset n=17.000 for imputation of the HCHS SES-Index and performs a multiple imputation. The output of the script are two data files "hchs_index_postimp_17000.csv" and "hchs_index_postimp_excl_outlier_17000.csv".
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load required packages
+```{r, include=FALSE}
+library(dplyr)
+library(stringr)  #extract parts of a variable for each case of this variable; organize columns when reading the mri txt files; to remove spaces from values
+library(haven)    #to import spss data files
+library(foreign)
+library(naniar)   #for missing variable analysis 
+library(nortest)  #for missing variable analysis 
+library(stats)    #for missing variable analysis 
+library(kableExtra)#for missing data analysis
+library(ggplot2)  #for histograms
+library(gridExtra)#for presentation of histograms 
+library(finalfit) #for visualization of missing data patterns 
+library(psych)    #for descriptives and intercorrelation matrix
+library(sjPlot)   #for plotting descriptives
+library(stargazer)#for plotting descriptives
+library(ggplot2)  #for plotting  
+library(gridExtra)#for plotting 
+library(visdat) #for visualization of missing data pattern for many variables at the same time
+library(apaTables)
+library("Hmisc")
+library(tidyverse)
+library(mice)     #for imputation
+library(ggplot2) # for comparison of pre- and post-imp distribution 
+library(finalfit) # for missing plot function
+```
+```
+
+###IMPORTING HCHS-SES-INDEX DATA
+#Import previously determined hchs ses-index 
+```{r}
+ses_data <- read.csv("C:/Users/annek/Documents/PhD/PTSD/HCHS/SES_Index_paper/17000_sample_ses_index/hchs_ses_index_preimp_17000.csv")
+```
+
+###PREPARATION SES DATA
+```{r}
+ses_data_subset <- ses_data[, c("DisclosureID", #choose subset of variables
+                                "HCH_SVAGE0001", 
+                                "HCH_SVSEX0001", 
+                                "job", 
+                                "income", 
+                                "education",
+                                "ses_index"
+                                )]
+
+colnames_ses_subset <- colnames(ses_data_subset) #save existing names to character vector
+ses_cols_to_replace <- c("DisclosureID", "HCH_SVAGE0001", "HCH_SVSEX0001")
+new_names <- c("pseudonym", "age", "sex")
+replace_indices <- which(colnames_ses_subset %in% ses_cols_to_replace)
+colnames(ses_data_subset)[replace_indices] <- new_names
+print(colnames(ses_data_subset))
+```
+
+###IDENTIFY MISSING DATA (PATTERN)
+Create missing plots to get an overview of the missing data pattern
+```{r}
+ses_missing_analysis <- ses_data_subset[, c("age", "sex", "job", "income", "education", "ses_index")]
+ses_missing_analysis %>% #save variables of interest as new data frame and create a missing plot with them
+  missing_plot(title = "Missing values plot of initial SES and questionnaire data (n = 17.000)")
+
+explanatory = c("job", "income", "education", "ses_index")
+dependent = "vf_phq9_001"
+ses_data_subset %>% # choose subset of variables and look at their missing data pattern
+  missing_pattern(dependent, explanatory)
+
+table_output <- miss_var_summary(ses_missing_analysis) # check for % of missing values per variable
+table_html <- kable(table_output, format = "html") %>% # convert the table to a html table
+  kable_styling()
+writeLines(table_html, "missing_summary.html") #save html
+```
+
+###PRE-IMPUTATION DATASET
+#Create variables which indicate missing values for each case in each ses variable. The variables will be used in multiple imputation, however, these variables have been imputed in another study so we do not want to impute the missing values again but keep the NAs. Therefore, I save these NAs now, to later recreate them.
+```{r}
+check_na <- c("job", "education", "income", "ses_index") # Define the variables to check for NA values
+for (variable in check_na) { # iterate over the variables 
+  na_variable <- paste0(variable, "_na") # create a new variable with _na suffix for each variable
+  ses_data_subset[[na_variable]] <- ifelse(is.na(ses_data_subset[[variable]]), 0, 1) # check for NAs in the variables and assign 0=NA or 1=no_NA accordingly
+}
+table(ses_data_subset$education_na) # NAs n=2340
+table(ses_data_subset$job_na) # NAs n=3428
+table(ses_data_subset$income_na) # NAs = 6586
+```
+
+MULTIPLE IMPUTATION (https://rpubs.com/kaz_yos/mice-exclude)
+```{r, results='hide'}
+allVars <- names(ses_data_subset) # save all variable names in the data frame in a list
+
+missVars <- names(ses_data_subset)[colSums(is.na(ses_data_subset)) > 0] # save names of variables with NAs in a list
+
+predictorMatrix <- matrix(0, ncol = length(allVars), nrow = length(allVars)) # create mice predictor matrix (Rows correspond to target variables;  A value of '1' means that the column variable is used as a predictor for the target variable (in the rows)) 
+rownames(predictorMatrix) <- allVars
+colnames(predictorMatrix) <- allVars
+
+imputerVars <- c("age", "sex", "job", "income", "education") # variables that will inform the imputation
+
+imputerVars <- intersect(unique(imputerVars), allVars) #  remove duplicate names in "imputer_vars"; take the two lists and keep only those variables that exist in both
+imputerVars
+imputerMatrix <- predictorMatrix # create a copy of predictor_matrix
+imputerMatrix[,imputerVars] <- 1 #  set the imputer_vars in the predictor_matrix to 1 to indicate that they are predictors
+imputerMatrix
+
+imputedVars <- intersect(unique(imputerVars), missVars) # remove duplicate names in "imputer_vars"; take the two lists and keep only those variables that exist in both
+imputedVars # check which variables are left; age and sex were removed because they do not contain NAs 
+imputedMatrix <- predictorMatrix
+imputedMatrix[imputedVars,] <- 1 # set the imputed_vars in the imputed_matrix to 1 to indicate that they are targets
+imputedMatrix
+
+predictorMatrix <- imputerMatrix * imputedMatrix # construct a full predictor matrix (rows: imputed variables; cols: imputer variables)
+diag(predictorMatrix) <- 0 # diagonals must be zeros because a variable cannot impute itself
+predictorMatrix
+
+set.seed(156)
+dryMice <- mice(data = ses_data_subset, m = 1, predictorMatrix = predictorMatrix, maxit = 0, seed = 156) # perform a pilot-imputation without imputing NAs (maxit = 0)
+dryMice$method # get the imputation method assigned to each variable (pmm = predictive mean matching, logreg = logistic regression, "" = no imputation planned~~)
+predictorMatrix <- dryMice$predictorMatrix # update predictor matrix
+options(max.print = 9999, width = 200) #adjust max.print value to make whole imputation matrix visible 
+print(predictorMatrix) # print whole imputation matrix
+imputerVars <- colnames(predictorMatrix)[colSums(predictorMatrix) > 0] #Imputers (non-zero columns of predictorMatrix)
+imputerVars 
+imputedVars <- rownames(predictorMatrix)[rowSums(predictorMatrix) > 0] #Imputed (non-zero rows of predictorMatrix)
+imputedVars 
+setdiff(imputerVars, imputedVars) # imputers that are complete
+intersect(imputerVars, imputedVars) # imputers with NAs
+setdiff(imputedVars, imputerVars) # imputed-only variables without being imputers
+setdiff(missVars, imputedVars) # variables with NAs that are not imputed
+predictorMatrix[rowSums(predictorMatrix) > 0, colSums(predictorMatrix) > 0] # Relevant part of predictorMatrix
+
+set.seed(4260)
+miceout <- mice(data = ses_data_subset, m = 5, predictorMatrix = predictorMatrix, method = dryMice$method, maxit = 50, seed = 4260)
+
+completedDatasets <- vector("list", length = 5) # Create an empty list to store the completed datasets
+for (i in 1:5) { # store each completed dataset in the list
+  completedDatasets[[i]] <- complete(miceout, action = i)
+}
+
+actuallyImputedVars <- vector("list", length = 5) # get information on variables actually imputed for each dataset
+for (i in 1:5) {
+  actuallyImputedVars[[i]] <- setdiff(names(ses_data_subset)[colSums(is.na(ses_data_subset)) > 0], 
+                                      names(completedDatasets[[i]])[colSums(is.na(completedDatasets[[i]])) > 0]) 
+} # Variables that no longer have NAs after imputation
+
+unexpectedlyImputedVars <- vector("list", length = 5) # Get variables that were unexpectedly imputed for each dataset
+for (i in 1:5) {
+  unexpectedlyImputedVars[[i]] <- setdiff(actuallyImputedVars[[i]], imputedVars)
+}
+
+plannedNotImputedVars <- vector("list", length = 5) # Get variables that were planned to be but not imputed for each dataset
+for (i in 1:5) {
+  plannedNotImputedVars[[i]] <- setdiff(imputedVars, actuallyImputedVars[[i]])
+}
+
+stillMissingVars <- vector("list", length = 5) # Get still missing variables for each dataset
+for (i in 1:5) {
+  stillMissingVars[[i]] <- names(completedDatasets[[i]])[colSums(is.na(completedDatasets[[i]])) > 0]
+}
+
+for (i in 1:5) { # Print results for each dataset separately
+  print(actuallyImputedVars[[i]]) #Variables actually imputed
+  print(unexpectedlyImputedVars[[i]]) #Variables unexpectedly imputed
+  print(plannedNotImputedVars[[i]]) #Variables planned but not imputed
+  print(stillMissingVars[[i]]) #Still missing variables
+}
+
+postimp_1 <- complete(miceout,1)
+postimp_2 <- complete(miceout,2)
+postimp_3 <- complete(miceout,3)
+postimp_4 <- complete(miceout,4)
+postimp_5 <- complete(miceout,5)
+
+postimp <-   complete(miceout) # merge imputation sets 
+str(postimp)
+
+imputation_methods <- miceout$method # check if the correct methods for imputation have been used 
+print(imputation_methods)
+nrow(postimp) # n=16411
+```
+
+Create SES-Index
+```{r}
+postimp <- postimp %>%
+  mutate(
+    education = as.numeric(as.character(education)),
+    job = as.numeric(as.character(job)),
+    income = as.numeric(as.character(income)),
+    ses_index = education + job + income
+  )
+
+table(postimp$ses_index)
+hist(postimp$ses_index)
+sum(!is.na(postimp$ses_index)) # determine how many ses_index values were determined
+```
+
+##Recreate NAs
+#1) Set those cases to NA, which had an NA in all subscores of the SES-Index. This way we keep only those imputations that are based on at least one subscore. 
+#2) Check the number of NAs on the ses_index variable
+#3) Create a postimp_no_na variable, excluding all cases that have an NA on the ses_index 
+```{r}
+postimp <- postimp %>%
+  mutate(
+    ses_index = if_else(education_na == 0 & job_na == 0 & income_na == 0, NA_real_, ses_index)
+  )
+
+# Then, update education, job, and income based on the updated ses_index
+postimp <- postimp %>%
+  mutate(
+    education = if_else(is.na(ses_index) & education_na == 0, NA_real_, education),
+    job = if_else(is.na(ses_index) & job_na == 0, NA_real_, job),
+    income = if_else(is.na(ses_index) & income_na == 0, NA_real_, income)
+  )
+  
+sum(!is.na(postimp$ses_index))
+
+postimp_no_na <- postimp[!is.na(postimp$ses_index), ]
+```
+
+COMPARE DISTRIBUTION BEFORE AND AFTER IMPUTATION (chat gpt)  
+```{r}
+plot_folder <- "imputation_quality_check_density_plots" # check if folder exists and if not create it
+if(!dir.exists(plot_folder)) {
+  dir.create(plot_folder)
+}
+
+plots <- list() # Initialize an empty list to store plots
+for(var in imputedVars) { # Loop through each variable and create a density plot
+  plots[[var]] <- ggplot() +
+    geom_density(data = ses_data_subset, aes_string(x = var, y = "..density.."), fill = "blue", alpha = 0.4) +
+    geom_density(data = postimp, aes_string(x = var, y = "..density.."), fill = "red", alpha = 0.4) +
+    labs(title = paste("Density Plot of", var, "Pre and Post Imputation"),
+         x = var,
+         y = "Density") +
+    theme_minimal()
+  file_path <- paste0(plot_folder, "/", "density_plot_", var, ".png") # Define the file path within the new folder
+  ggsave(file_path, plot = plots[[var]], width = 10, height = 8) # Save the plot to the specified file path
+}
+
+vars_ses <- c("income", "education", "job", "ses_index") # choose variables 
+for(var in vars_ses) { # create tables of the chosen variables and compare pre-post imputation for each of them 
+  cat("Frequency table for:", var, " - Pre-Imputation\n")
+  print(summary(ses_data_subset[[var]], useNA = "ifany"))
+  cat("\n") # adds an empty line for readability
+  
+  cat("Frequency table for:", var, " - Post-Imputation\n")
+  print(summary(postimp[[var]], useNA = "ifany"))
+  cat("\n\n") # adds two empty lines for readability between variable comparisons
+}
+hist(postimp$ses_index, main = "Histogram of ses index after imputation")
+hist(ses_data_subset$ses_index, main = "Histogram of ses index before imputation")
+```
+
+For clarification, change variable names
+```{r}
+postimp <- postimp %>%
+  rename(
+    education_computed_based_on_raw_data = education_na,
+    job_computed_based_on_raw_data = job_na,
+    income_computed_based_on_raw_data = income_na,
+    index_computed_based_on_raw_data = ses_index_na
+  )
+```
+
+#Save as csv files
+I call the data frame "17000" even though it acutally only includes 16411. This is, because it was supposed to be the "n=17.000" subsample of the HCHS study. 
+```{r}
+write.csv(postimp, file = "hchs_index_postimp_17000.csv", row.names = FALSE) # Save postimp dataframe
+
+#Save pseudonym values of those cases that have ses_index values (n=15292)
+length(postimp_no_na$pseudonym) # check for number of cases 
+sum(is.na(postimp_no_na$pseudonym)) # check for NAs
+pseudonym_values_15292 <- postimp_no_na$pseudonym
+values_string_15292 <- paste(pseudonym_values_15292, collapse = "\n") # Create a string with values separated by newline character
+write(values_string_15292, "pseudonym_values_postimp_15292.txt")  # Write the string to a text file
+```
